@@ -74,3 +74,51 @@ def test_require_bare_rejects_paths(bad):
 def test_require_bare_and_sha256():
     assert files.require_bare("ok.pdf") == "ok.pdf"
     assert files.sha256(b"abc") == hashlib.sha256(b"abc").hexdigest()
+
+
+def _old(path, hours):
+    t = os.path.getmtime(path) - hours * 3600
+    os.utime(path, (t, t))
+
+
+def test_list_files_shows_size_sha_and_reference(tmp_path):
+    (tmp_path / "a.pdf").write_bytes(b"abc")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "b.txt").write_bytes(b"x")
+    out = files.list_files(tmp_path)
+    assert "1 file(s)" in out and "a.pdf  (3 bytes" in out and "[shared:a.pdf]" in out
+    assert hashlib.sha256(b"abc").hexdigest() in out and "b.txt" not in out
+    deep = files.list_files(tmp_path, scheme="local", label="local store", recursive=True)
+    assert "2 file(s) in the local store" in deep and "[local:sub/b.txt]" in deep
+
+
+def test_list_files_filter_empty_and_missing(tmp_path):
+    (tmp_path / "Invoice.PDF").write_bytes(b"1")
+    assert "Invoice.PDF" in files.list_files(tmp_path, "invoice")
+    assert "is empty (filter 'zzz')" in files.list_files(tmp_path, "zzz")
+    assert "does not exist" in files.list_files(tmp_path / "nope")
+
+
+def test_purge_one_deletes_only_bare_names(tmp_path):
+    (tmp_path / "a.pdf").write_bytes(b"abc")
+    assert files.purge_one(tmp_path, "a.pdf") == f"Deleted a.pdf (3 bytes) from {tmp_path}."
+    assert not (tmp_path / "a.pdf").exists()
+    assert "No such file" in files.purge_one(tmp_path, "a.pdf")
+    with pytest.raises(ValueError):
+        files.purge_one(tmp_path, "../a.pdf")
+
+
+def test_purge_older_respects_age_dry_run_and_subdirs(tmp_path):
+    for name in ("old.pdf", "new.pdf"):
+        (tmp_path / name).write_bytes(b"x")
+    _old(tmp_path / "old.pdf", 30)
+    (tmp_path / "keepdir").mkdir()
+    _old(tmp_path / "keepdir", 30)
+    dry = files.purge_older(tmp_path, 24, dry_run=True)
+    assert dry.startswith("Would delete 1 file(s)") and (tmp_path / "old.pdf").exists()
+    assert files.purge_older(tmp_path, 24).startswith("Deleted 1 file(s)")
+    assert not (tmp_path / "old.pdf").exists() and (tmp_path / "new.pdf").exists() and (tmp_path / "keepdir").is_dir()
+    assert "No files older" in files.purge_older(tmp_path, 24)
+    with pytest.raises(ValueError):
+        files.purge_older(tmp_path, -1)
+    assert "nothing to purge" in files.purge_older(tmp_path / "nope")

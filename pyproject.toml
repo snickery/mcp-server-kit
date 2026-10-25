@@ -1,6 +1,6 @@
 [project]
 name = "mcp-server-kit"
-version = "0.1.0"
+version = "0.1.1"
 description = "Shared plumbing for FastMCP servers: bearer auth, off-event-loop sync tools with per-call logging, stdio/HTTP serving, and a liveness probe"
 readme = "README.md"
 license = "MIT"

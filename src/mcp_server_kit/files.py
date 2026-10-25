@@ -7,10 +7,15 @@ on a collision append -2, -3, ... before the extension. Creation uses
 O_CREAT|O_EXCL, so parallel writers in different processes can't clobber each
 other. Every transfer reports the sha256 of the bytes, so the caller can verify
 a handoff in-band.
+
+`list_files`, `purge_one` and `purge_older` are the matching housekeeping tools'
+bodies; they return the human-readable text a tool hands back. They only ever
+touch regular files, never subdirectories.
 """
 
 import hashlib
 import os
+import time
 from pathlib import Path
 
 MAX_SUFFIX = 1000
@@ -60,3 +65,62 @@ def atomic_create(root: Path, filename: str, data: bytes) -> Path:
         path.unlink(missing_ok=True)
         raise
     return path
+
+
+def _age_hours(st: os.stat_result) -> float:
+    return (time.time() - st.st_mtime) / 3600
+
+
+def list_files(root: Path, filter: str = "", *, scheme: str = "shared", label: str = "shared mount",
+               recursive: bool = False) -> str:
+    """List the regular files under `root`: size, age, sha256 and the `<scheme>:<name>` reference.
+    `filter` is a case-insensitive substring of the filename. `recursive` includes
+    subdirectories (names are then relative paths)."""
+    root = Path(root)
+    if not root.exists():
+        return f"The {label} ({root}) does not exist."
+    files = sorted(p for p in (root.rglob("*") if recursive else root.iterdir()) if p.is_file())
+    if filter:
+        files = [p for p in files if filter.lower() in p.name.lower()]
+    if not files:
+        return f"The {label} is empty" + (f" (filter {filter!r})." if filter else ".")
+    lines = [f"{len(files)} file(s) in the {label} ({root}):"]
+    for p in files:
+        rel = p.relative_to(root).as_posix()
+        data = p.read_bytes()
+        lines.append(f"  • {rel}  ({len(data)} bytes, age {_age_hours(p.stat()):.1f}h, "
+                     f"sha256 {sha256(data)})  [{scheme}:{rel}]")
+    return "\n".join(lines)
+
+
+def purge_one(root: Path, filename: str, *, label: str = "shared mount") -> str:
+    """Delete one file under `root` by bare filename (see require_bare)."""
+    require_bare(filename)
+    target = Path(root) / filename
+    if not target.is_file():
+        return f"No such file in the {label}: {filename}"
+    size = target.stat().st_size
+    target.unlink()
+    return f"Deleted {filename} ({size} bytes) from {root}."
+
+
+def purge_older(root: Path, max_age_hours: float = 24.0, dry_run: bool = False) -> str:
+    """Delete the top-level files under `root` whose mtime is older than `max_age_hours`.
+    `dry_run` lists them without deleting."""
+    if max_age_hours < 0:
+        raise ValueError("max_age_hours must be >= 0")
+    root = Path(root)
+    if not root.exists():
+        return f"{root} does not exist (nothing to purge)."
+    cutoff = time.time() - max_age_hours * 3600
+    victims = sorted(p for p in root.iterdir() if p.is_file() and p.stat().st_mtime < cutoff)
+    if not victims:
+        return f"No files older than {max_age_hours}h in {root}."
+    verb = "Would delete" if dry_run else "Deleted"
+    lines = [f"{verb} {len(victims)} file(s) older than {max_age_hours}h from {root}:"]
+    for p in victims:
+        st = p.stat()
+        lines.append(f"  • {p.name}  ({st.st_size} bytes, age {_age_hours(st):.1f}h)")
+        if not dry_run:
+            p.unlink(missing_ok=True)
+    return "\n".join(lines)

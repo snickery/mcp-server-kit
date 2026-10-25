@@ -9,7 +9,7 @@ Shared plumbing for Python MCP servers built on the official SDK's FastMCP
 | `BearerAuthMiddleware` | Pure ASGI bearer-token gate (timing-safe compare, streaming-safe). Only `/.well-known/` discovery paths are exempt, matched by prefix, never by substring. |
 | `serve` | `--stdio` runs stdio. Otherwise it serves Streamable HTTP at `/mcp` behind the bearer gate, and **refuses to start without a token**. |
 | `healthcheck.probe` | A liveness probe for containers: a full HTTP round-trip to `/mcp`, where the 401 counts as alive. Pair it with restart-on-unhealthy so a wedged loop heals itself. |
-| `files` | Collision-safe staging for a directory several servers share: bare names only, never overwrite (`-2`, `-3`, … before the extension, `O_CREAT\|O_EXCL`), `sha256` of every transfer. `atomic_create` writes bytes; `exclusive_open` hands a streaming writer the fd. |
+| `files` | Collision-safe staging for a directory several servers share: bare names only, never overwrite (`-2`, `-3`, … before the extension, `O_CREAT\|O_EXCL`), `sha256` of every transfer. `atomic_create` writes bytes; `exclusive_open` hands a streaming writer the fd. `list_files` / `purge_one` / `purge_older` (0.1.1) are the bodies of the matching housekeeping tools: listing with sha256 and `<scheme>:<name>` references, delete by bare name, age-based purge with dry run. |
 | `pdf` (extra `[pdf]`) | PDF text extraction (pdfplumber text / layout / tables), page rendering (pypdfium2), and OCR through an [xberg](https://github.com/xberg-io/xberg) server (tesseract, or a vision model for hard pages). Configured by `XBERG_*` env vars; the PDF libraries load lazily. |
 
 ## Install
