@@ -37,7 +37,10 @@ passed verbatim),
 XBERG_VLM_BASE_URL (default http://litellm:4000/v1 — an
 OpenAI-compatible endpoint, resolved by the xberg SERVER, not this
 process), XBERG_VLM_API_KEY (required for ocr='llm' only — the
-LiteLLM virtual key).
+key for that endpoint), XBERG_API_TOKEN (optional — xberg's own API bearer
+token, sent as ``Authorization: Bearer`` on every request; xberg >= 1.5
+refuses to listen on a non-loopback address without one, so set it to the
+server's XBERG_API_TOKEN).
 """
 
 import contextlib
@@ -272,6 +275,14 @@ def _xberg_config() -> tuple[str, float]:
     return base_url, timeout
 
 
+def xberg_headers() -> dict[str, str]:
+    """Request headers for the xberg server: ``Authorization: Bearer`` when
+    XBERG_API_TOKEN is set, otherwise none (an open xberg). Every caller
+    that talks to xberg, the /health probe included, should send these."""
+    token = os.environ.get("XBERG_API_TOKEN", "").strip()
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
 def xberg_ocr_pages(
     file_bytes: bytes,
     page_numbers: list[int],
@@ -343,7 +354,7 @@ def xberg_ocr_pages(
     ]
     data = {"output_format": "markdown", "config": json.dumps(config)}
 
-    with httpx.Client(timeout=timeout) as http:
+    with httpx.Client(timeout=timeout, headers=xberg_headers()) as http:
         resp = http.post(f"{base_url}/extract", data=data, files=files)
     if resp.status_code != 200:
         raise RuntimeError(

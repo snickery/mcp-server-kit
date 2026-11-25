@@ -99,7 +99,7 @@ def _xberg_response(*texts: str) -> _FakeResponse:
 def clean_env(monkeypatch):
     for var in ("XBERG_BASE_URL", "XBERG_TIMEOUT", "XBERG_OCR_BACKEND",
                 "XBERG_VLM_MODEL", "XBERG_VLM_BASE_URL",
-                "XBERG_VLM_API_KEY"):
+                "XBERG_VLM_API_KEY", "XBERG_API_TOKEN"):
         monkeypatch.delenv(var, raising=False)
 
 
@@ -116,6 +116,32 @@ def fake_http(clean_env, monkeypatch):
         monkeypatch.setattr("httpx.Client", client_factory)
 
     return queue
+
+
+class TestXbergAuth:
+    def test_no_token_sends_no_authorization(self, fake_http):
+        fake_http(_xberg_response("A"))
+        pdf_read.xberg_ocr_pages(SCANNED, [1])
+        (client,) = _FakeHttpClient.instances
+        assert "Authorization" not in (client.kwargs.get("headers") or {})
+
+    def test_token_sent_as_bearer(self, fake_http, monkeypatch):
+        monkeypatch.setenv("XBERG_API_TOKEN", "  tok-123  ")
+        fake_http(_xberg_response("A"))
+        pdf_read.xberg_ocr_pages(SCANNED, [1])
+        (client,) = _FakeHttpClient.instances
+        assert client.kwargs["headers"] == {"Authorization": "Bearer tok-123"}
+
+    def test_blank_token_is_unset(self, clean_env, monkeypatch):
+        monkeypatch.setenv("XBERG_API_TOKEN", "   ")
+        assert pdf_read.xberg_headers() == {}
+
+    def test_token_not_in_form_data(self, fake_http, monkeypatch):
+        monkeypatch.setenv("XBERG_API_TOKEN", "tok-123")
+        fake_http(_xberg_response("A"))
+        pdf_read.xberg_ocr_pages(SCANNED, [1])
+        (client,) = _FakeHttpClient.instances
+        assert "tok-123" not in json.dumps(client.posts[0][1])
 
 
 class TestXbergOcr:

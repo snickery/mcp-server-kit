@@ -6,4 +6,4 @@ from mcp_server_kit.serve import serve
 from mcp_server_kit.tools import offload_sync_tools, request_logger, rss_mib
 
 __all__ = ["BearerAuthMiddleware", "offload_sync_tools", "request_logger", "rss_mib", "serve"]
-__version__ = "0.1.0"
+__version__ = "0.1.2"
