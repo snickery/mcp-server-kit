@@ -136,6 +136,13 @@ class TestXbergAuth:
         monkeypatch.setenv("XBERG_API_TOKEN", "   ")
         assert pdf_read.xberg_headers() == {}
 
+    @pytest.mark.parametrize("bad", ["bad\nsekrit-x", "bad sekrit-x", "bad\x00x", "bad\x7fx"])
+    def test_malformed_token_refused_without_echo(self, clean_env, monkeypatch, bad):
+        monkeypatch.setenv("XBERG_API_TOKEN", bad)
+        with pytest.raises(RuntimeError) as e:
+            pdf_read.xberg_headers()
+        assert "sekrit" not in str(e.value) and "bad" not in str(e.value)
+
     def test_token_not_in_form_data(self, fake_http, monkeypatch):
         monkeypatch.setenv("XBERG_API_TOKEN", "tok-123")
         fake_http(_xberg_response("A"))

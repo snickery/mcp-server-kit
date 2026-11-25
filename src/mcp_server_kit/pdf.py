@@ -280,7 +280,17 @@ def xberg_headers() -> dict[str, str]:
     XBERG_API_TOKEN is set, otherwise none (an open xberg). Every caller
     that talks to xberg, the /health probe included, should send these."""
     token = os.environ.get("XBERG_API_TOKEN", "").strip()
-    return {"Authorization": f"Bearer {token}"} if token else {}
+    if not token:
+        return {}
+    # A malformed secret (an interior newline from a bad env file) would make
+    # httpx raise with the header value, token included, in its message.
+    # Refuse it here without echoing it.
+    if any(ord(ch) < 0x21 or ord(ch) == 0x7F for ch in token):
+        raise RuntimeError(
+            "XBERG_API_TOKEN contains whitespace or control characters; "
+            "fix the env file (value not shown)."
+        )
+    return {"Authorization": f"Bearer {token}"}
 
 
 def xberg_ocr_pages(
